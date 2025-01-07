@@ -14,3 +14,4 @@ node_modules
 **/contract-bindings/Cargo.lock
 **/compute_data/
 **/rollups_data/
+.direnv/
