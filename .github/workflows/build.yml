@@ -1,5 +1,6 @@
 name: Build
-on: [push]
+on: 
+  push:
 jobs:
   build:
     runs-on: ubuntu-22.04
@@ -18,3 +19,12 @@ jobs:
           forge build
           forge fmt --check
           forge test
+
+      - name: Install just
+        run: |
+          cargo install just
+ 
+      - name: Rust fmt and check
+        run: |
+          just format-rust-workspace
+          just check-rust-workspace
