@@ -15,7 +15,16 @@
         pkgs = nixpkgs.legacyPackages.${system};
       in
       {
-        devShells.default = pkgs.mkShell { packages = with pkgs; [ bashInteractive just ]; };
+        formatter = pkgs.nixfmt-rfc-style;
+        devShells.default = pkgs.mkShell {
+          packages = with pkgs; [
+            bashInteractive
+            just
+            rustc
+            cargo
+            clippy
+          ];
+        };
       }
     );
 }
