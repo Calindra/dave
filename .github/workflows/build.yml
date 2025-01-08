@@ -21,8 +21,7 @@ jobs:
           forge test
 
       - name: Install just
-        run: |
-          cargo install just
+        uses: extractions/setup-just@v2
 
       - name: Deps
         run: |
@@ -37,3 +36,7 @@ jobs:
           just setup
           just format-rust-workspace
           just check-rust-workspace
+      
+      - name: Rust test workspace
+        run: |
+          just test-rust-workspace
