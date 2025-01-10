@@ -26,14 +26,14 @@
             foundry.overlay
           ];
         };
-        stdenv = pkgs.stdenv;
-        lib = nixpkgs.lib;
+        # stdenv = pkgs.stdenv;
+        # lib = nixpkgs.lib;
       in
       {
         formatter = pkgs.nixfmt-rfc-style;
         devShells.default = pkgs.mkShell {
           # Point bindgen to where the clang library would be
-          LIBCLANG_PATH = "${pkgs.libclang.lib}/lib";
+          # LIBCLANG_PATH = "${pkgs.libclang.lib}/lib";
           # BINDGEN_EXTRA_CLANG_ARGS = ''
           #   ${stdenv.cc}/nix-support/libc-crt1-cflags \
           #   ${stdenv.cc}/nix-support/libc-cflags \
@@ -43,6 +43,7 @@
           #   ${lib.optionalString stdenv.cc.isGNU "-isystem ${stdenv.cc.cc}/include/c++/${lib.getVersion stdenv.cc.cc} -isystem ${stdenv.cc.cc}/include/c++/${lib.getVersion stdenv.cc.cc}/${stdenv.hostPlatform.config}"}
           # '';
           packages = with pkgs; [
+            include-what-you-use
             bashInteractive
             foundry-bin
             just
