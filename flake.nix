@@ -29,7 +29,7 @@
         defaultPackage = naersk-lib.buildPackage ./.;
         devShells.default = pkgs.mkShell {
           RUST_SRC_PATH = pkgs.rustPlatform.rustLibSrc;
-          LIBCLANG_PATH = "${pkgs.llvmPackages_19.libclang.lib}/lib";
+          # LIBCLANG_PATH = "${pkgs.llvmPackages_19.libclang.lib}/lib";
           packages = with pkgs; [
             bashInteractive
             just
@@ -41,6 +41,7 @@
             boost
             pkg-config
             openssl
+            llvmPackages_19.clang-tools
           ];
         };
       }
