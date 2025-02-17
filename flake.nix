@@ -26,7 +26,10 @@
       in
       {
         formatter = pkgs.nixfmt-rfc-style;
-        defaultPackage = naersk-lib.buildPackage ./.;
+        packages = rec {
+          dave = naersk-lib.buildPackage ./.;
+          default = dave;  # Set defaultPackage to reference dave
+        };
         devShells.default = pkgs.mkShell {
           RUST_SRC_PATH = pkgs.rustPlatform.rustLibSrc;
           LIBCLANG_PATH = "${pkgs.llvmPackages_19.libclang.lib}/lib";
@@ -49,7 +52,6 @@
             rustc
             cargo
             clippy
-            just
             unixtools.xxd
             boost
             pkg-config
