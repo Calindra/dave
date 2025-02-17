@@ -43,7 +43,7 @@
             ++ [
               ''-I"${pkgs.llvmPackages_19.libclang.lib}/lib/clang/19/include"''
               ''-I"${pkgs.glib.dev}/include/glib-2.0"''
-              ''-I${pkgs.glib.out}/lib/glib-2.0/include/''
+              ''-I"${pkgs.glib.out}/lib/glib-2.0/include/"''
             ];
 
           packages = with pkgs; [
@@ -58,6 +58,7 @@
             openssl
             llvmPackages_19.libclang
             glibc
+            cmake
           ];
         };
       }
