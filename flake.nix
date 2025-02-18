@@ -59,6 +59,8 @@
             llvmPackages_19.libclang
             glibc
             cmake
+            lua
+            sqlite
           ];
         };
       }
