@@ -3,63 +3,59 @@
 
 use async_trait::async_trait;
 use log::trace;
-use std::{str::FromStr, sync::Arc};
+use std::str::FromStr;
 
 use alloy::{
     contract::Error as ContractError,
     network::{Ethereum, EthereumWallet, NetworkWallet},
-    providers::{
-        fillers::{
-            BlobGasFiller, ChainIdFiller, FillProvider, GasFiller, JoinFill, NonceFiller,
-            WalletFiller,
-        },
-        Identity, Provider, ProviderBuilder, RootProvider,
-    },
+    providers::{DynProvider, Provider, ProviderBuilder},
     signers::local::PrivateKeySigner,
     sol_types::private::{Address, Bytes, B256},
-    transports::{
-        http::{Client, Http},
-        RpcError, TransportErrorKind,
-    },
+    transports::{RpcError, TransportErrorKind},
 };
 
 use crate::{
     arena::{arena::MatchID, config::BlockchainConfig},
     machine::MachineProof,
 };
+use cartesi_dave_kms::{CommonSignature, KmsSignerBuilder};
 use cartesi_dave_merkle::{Digest, MerkleProof};
 use cartesi_prt_contracts::{leaftournament, nonleaftournament, tournament};
 
-pub type SenderFiller = FillProvider<
-    JoinFill<
-        JoinFill<
-            Identity,
-            JoinFill<GasFiller, JoinFill<BlobGasFiller, JoinFill<NonceFiller, ChainIdFiller>>>,
-        >,
-        WalletFiller<EthereumWallet>,
-    >,
-    RootProvider<Http<Client>>,
-    Http<Client>,
-    Ethereum,
->;
 type Result<T> = std::result::Result<T, ContractError>;
 
 #[derive(Clone)]
 pub struct EthArenaSender {
-    client: Arc<SenderFiller>,
+    client: DynProvider,
     wallet_address: Address,
 }
 
 impl EthArenaSender {
-    pub fn new(config: &BlockchainConfig) -> anyhow::Result<Self> {
-        let signer = PrivateKeySigner::from_str(config.web3_private_key.as_str())?;
+    pub async fn new(config: &BlockchainConfig) -> anyhow::Result<Self> {
+        let signer: Box<CommonSignature>;
+
+        let has_awsconfig = config.aws_config.aws_kms_key_id.is_some();
+
+        if has_awsconfig {
+            let key_id = config.aws_config.aws_kms_key_id.clone().unwrap();
+            let kms_signer = KmsSignerBuilder::new()
+                .await
+                .with_chain_id(config.web3_chain_id)
+                .with_key_id(key_id)
+                .build()
+                .await?;
+            signer = Box::new(kms_signer);
+        } else {
+            let local_signer = PrivateKeySigner::from_str(config.web3_private_key.as_str())?;
+            signer = Box::new(local_signer);
+        }
+
         let wallet = EthereumWallet::from(signer);
         let wallet_address =
             <EthereumWallet as NetworkWallet<Ethereum>>::default_signer_address(&wallet);
 
         let url = config.web3_rpc_url.parse()?;
-        let provider = ProviderBuilder::new()
-            .with_recommended_fillers()
+        let client = ProviderBuilder::new()
             .wallet(wallet)
             .with_chain(
                 config
@@ -67,8 +63,8 @@ impl EthArenaSender {
                     .try_into()
                     .expect("fail to convert chain id"),
             )
-            .on_http(url);
-        let client = Arc::new(provider);
+            .on_http(url)
+            .erased();
 
         Ok(Self {
             client,
@@ -76,7 +72,7 @@ impl EthArenaSender {
         })
     }
 
-    pub fn client(&self) -> Arc<SenderFiller> {
+    pub fn client(&self) -> DynProvider {
         self.client.clone()
     }
 

@@ -16,17 +16,20 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
     MiddleTournamentFactory immutable middleFactory;
     BottomTournamentFactory immutable bottomFactory;
     ITournamentParametersProvider immutable tournamentParametersProvider;
+    IStateTransition immutable stateTransition;
 
     constructor(
         TopTournamentFactory _topFactory,
         MiddleTournamentFactory _middleFactory,
         BottomTournamentFactory _bottomFactory,
-        ITournamentParametersProvider _tournamentParametersProvider
+        ITournamentParametersProvider _tournamentParametersProvider,
+        IStateTransition _stateTransition
     ) {
         topFactory = _topFactory;
         middleFactory = _middleFactory;
         bottomFactory = _bottomFactory;
         tournamentParametersProvider = _tournamentParametersProvider;
+        stateTransition = _stateTransition;
     }
 
     function instantiate(Machine.Hash _initialHash, IDataProvider _provider)
@@ -99,7 +102,8 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
             _startCycle,
             _level,
             _getTournamentParameters(_level),
-            _provider
+            _provider,
+            stateTransition
         );
 
         return _tournament;

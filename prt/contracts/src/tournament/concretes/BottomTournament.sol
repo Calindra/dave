@@ -20,9 +20,10 @@ contract BottomTournament is LeafTournament, NonRootTournament {
         uint256 _startCycle,
         uint64 _level,
         TournamentParameters memory _tournamentParameters,
-        IDataProvider _provider
+        IDataProvider _provider,
+        IStateTransition _stateTransition
     )
-        LeafTournament()
+        LeafTournament(_stateTransition)
         NonRootTournament(
             _initialHash,
             _contestedCommitmentOne,
