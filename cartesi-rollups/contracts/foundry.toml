@@ -1,21 +1,22 @@
 [profile.default]
 src = "src"
 out = "out"
-libs = ["lib"]
+libs = ["dependencies", "../../prt/contracts", "../../machine/step"]
+optimizer = true
 via_ir = true
 
 remappings = [
-    'openzeppelin-contracts/=lib/openzeppelin-contracts/contracts/',
-    'rollups-contracts/=lib/rollups-contracts/contracts/',
+    '@openzeppelin-contracts-5.2.0/=dependencies/@openzeppelin-contracts-5.2.0/',
+    'forge-std-1.9.6/=dependencies/forge-std-1.9.6/',
+    'cartesi-rollups-contracts-2.0.0/=dependencies/cartesi-rollups-contracts-2.0.0-rc.17/src/',
+
     'prt-contracts/=../../prt/contracts/src/',
     'step/=../../machine/step/',
 ]
 
-allow_paths = [
-    '../../prt/contracts/src/',
-    '../../machine/step/',
-]
-
 solc-version = "0.8.27"
 
-# See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
+[dependencies]
+"@openzeppelin-contracts" = "5.2.0"
+forge-std = "1.9.6"
+cartesi-rollups-contracts = "2.0.0-rc.17"

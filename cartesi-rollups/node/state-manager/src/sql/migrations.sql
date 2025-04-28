@@ -1,12 +1,15 @@
-CREATE TABLE computation_hashes (
+CREATE TABLE settlement_info (
     epoch_number INTEGER NOT NULL PRIMARY KEY,
-    computation_hash BLOB NOT NULL
+    computation_hash BLOB NOT NULL,
+    output_merkle BLOB NOT NULL,
+    output_proof BLOB NOT NULL
 );
 
 CREATE TABLE epochs (
     epoch_number INTEGER NOT NULL PRIMARY KEY,
     input_index_boundary INTEGER NOT NULL,
-    root_tournament TEXT NOT NULL
+    root_tournament TEXT NOT NULL,
+    block_created_number INTEGER NOT NULL
 );
 
 CREATE TABLE inputs (

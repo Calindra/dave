@@ -2,6 +2,7 @@ local Hash = require "cryptography.hash"
 local arithmetic = require "utils.arithmetic"
 local cartesi = require "cartesi"
 local consts = require "computation.constants"
+local conversion = require "utils.conversion"
 local helper = require "utils.helper"
 
 local ComputationState = {}
@@ -19,12 +20,12 @@ function ComputationState:new(root_hash, halted, yielded, uhalted)
 end
 
 function ComputationState.from_current_machine_state(machine)
-    local hash = Hash:from_digest(machine:get_root_hash())
+    local hash = Hash:from_digest(machine.machine:get_root_hash())
     return ComputationState:new(
         hash,
-        machine:read_iflags_H(),
-        machine:read_iflags_Y(),
-        machine:read_uarch_halt_flag()
+        machine:is_halted(),
+        machine:is_yielded(),
+        machine:is_uarch_halted()
     )
 end
 
@@ -50,15 +51,16 @@ local machine_settings = { htif = { no_console_putchar = true } }
 
 function Machine:new_from_path(path)
     local machine = cartesi.machine(path, machine_settings)
-    local start_cycle = machine:read_mcycle()
+    local start_cycle = machine:read_reg("mcycle")
 
     -- Machine can never be advanced on the micro arch.
     -- Validators must verify this first
-    assert(machine:read_uarch_cycle() == 0)
+    assert(machine:read_reg("uarch_cycle") == 0)
 
     local b = {
-        path = path,
+        -- path = path,
         machine = machine,
+        input_count = 0,
         cycle = 0,
         ucycle = 0,
         start_cycle = start_cycle,
@@ -67,10 +69,6 @@ function Machine:new_from_path(path)
 
     setmetatable(b, self)
     return b
-end
-
-function Machine:state()
-    return ComputationState.from_current_machine_state(self.machine)
 end
 
 local function find_closest_snapshot(path, current_cycle, cycle)
@@ -115,25 +113,24 @@ local function find_closest_snapshot(path, current_cycle, cycle)
     return closest_cycle, closest_dir
 end
 
-
-local function to256BitHex(num) -- Pad the hex string with leading zeros to ensure it's 64 characters long (256 bits)
-    return string.format("%064x", num)
-end
-
 function Machine:take_snapshot(snapshot_dir, cycle, handle_rollups)
-    local input_mask = arithmetic.max_uint(consts.log2_emulator_span)
-    if handle_rollups and cycle & input_mask == 0 then
-        -- dont snapshot a machine state that's freshly fed with input without advance
-        assert(not self.yielded, "don't snapshot a machine state that's freshly fed with input without advance")
+    local input_mask = consts.barch_span_to_input
+    if handle_rollups and ((cycle & input_mask) == 0) then
+        if (not self.yielded) then
+            -- don't snapshot a machine state that's freshly fed with input without advance
+            return
+        end
     end
 
-    if helper.exists(snapshot_dir) then
-        local snapshot_path = snapshot_dir .. "/" .. tostring(cycle)
+    if not helper.exists(snapshot_dir) then
+        helper.mkdir_p(snapshot_dir)
+    end
 
-        if not helper.exists(snapshot_path) then
-            -- print("saving snapshot", snapshot_path)
-            self.machine:store(snapshot_path)
-        end
+    local snapshot_path = snapshot_dir .. "/" .. tostring(cycle)
+
+    if not helper.exists(snapshot_path) then
+        -- print("saving snapshot", snapshot_path)
+        self.machine:store(snapshot_path)
     end
 end
 
@@ -161,20 +158,78 @@ local function add_and_clamp(x, y)
     end
 end
 
-function Machine:run(cycle)
-    assert(arithmetic.ulte(self.cycle, cycle))
+local function advance_rollup(self, meta_cycle, inputs)
+    assert(self:is_yielded())
+    local input_count = (meta_cycle >> consts.log2_uarch_span_to_input):tointeger()
+    local cycle = (meta_cycle >> consts.log2_uarch_span_to_barch):tointeger()
+    local ucycle = (meta_cycle & consts.uarch_span_to_barch):tointeger()
 
-    local machine = self.machine
-    local mcycle = machine:read_mcycle()
-    local physical_cycle = add_and_clamp(mcycle, cycle - self.cycle) -- TODO reconsider for lambda
+    while self.input_count < input_count do
+        local input = inputs[self.input_count + 1]
 
-    while not (machine:read_iflags_H() or machine:read_iflags_Y() or machine:read_mcycle() == physical_cycle) do
-        machine:run(physical_cycle)
+        if not input then
+            self.input_count = input_count
+            break
+        end
+
+        local input_bin = conversion.bin_from_hex_n(input)
+        self.machine:send_cmio_response(cartesi.CMIO_YIELD_REASON_ADVANCE_STATE, input_bin);
+
+        repeat
+            self.machine:run(arithmetic.max_uint64)
+        until self:is_halted() or self:is_yielded()
+        assert(not self:is_halted())
+
+        self.input_count = self.input_count + 1
+    end
+    assert(self.input_count == input_count)
+
+    if cycle == 0 and ucycle == 0 then
+        return
     end
 
-    self.cycle = cycle
+    local input = inputs[self.input_count + 1]
+    if input then
+        local input_bin = conversion.bin_from_hex_n(input)
+        self.machine:send_cmio_response(cartesi.CMIO_YIELD_REASON_ADVANCE_STATE, input_bin);
+    end
 
-    return self:state()
+    self:run(cycle)
+    self:run_uarch(ucycle)
+end
+
+function Machine:new_rollup_advanced_until(path, meta_cycle, inputs)
+    local input_count = (meta_cycle >> consts.log2_uarch_span_to_input):tointeger()
+    assert(arithmetic.ulte(input_count, consts.input_span_to_epoch))
+
+    local machine = Machine:new_from_path(path)
+    advance_rollup(machine, meta_cycle, inputs)
+
+    return machine
+end
+
+function Machine:state()
+    return ComputationState.from_current_machine_state(self)
+end
+
+function Machine:is_halted()
+    return self.machine:read_reg("iflags_H") ~= 0
+end
+
+function Machine:is_yielded()
+    return self.machine:read_reg("iflags_Y") ~= 0
+end
+
+function Machine:is_uarch_halted()
+    return self.machine:read_reg("uarch_halt_flag") ~= 0
+end
+
+function Machine:physical_cycle()
+    return self.machine:read_reg("mcycle")
+end
+
+function Machine:physical_uarch_cycle()
+    return self.machine:read_reg("uarch_cycle")
 end
 
 function Machine:run_uarch(ucycle)
@@ -183,44 +238,20 @@ function Machine:run_uarch(ucycle)
     self.ucycle = ucycle
 end
 
-function Machine:run_with_inputs(cycle, inputs, snapshot_dir)
-    local input_mask = arithmetic.max_uint(consts.log2_emulator_span)
-    local current_input_index = self.cycle >> consts.log2_emulator_span
+function Machine:run(cycle)
+    assert(arithmetic.ulte(self.cycle, cycle))
 
-    local next_input_index
-    local machine_state_without_input = self:state()
+    local machine = self.machine
+    local target_physical_cycle = add_and_clamp(self:physical_cycle(), cycle - self.cycle) -- TODO reconsider for lambda
 
-    if self.cycle & input_mask == 0 then
-        next_input_index = current_input_index
-    else
-        next_input_index = current_input_index + 1
-    end
-    local next_input_cycle = next_input_index << consts.log2_emulator_span
+    repeat
+        machine:run(target_physical_cycle)
+    until self:is_halted() or self:is_yielded() or
+        self:physical_cycle() == target_physical_cycle
 
-    while next_input_cycle <= cycle do
-        machine_state_without_input = self:run(next_input_cycle)
-        if next_input_cycle == cycle then
-            self:take_snapshot(snapshot_dir, next_input_cycle, true)
-        end
-        local input = inputs[next_input_index + 1]
-        if input then
-            local h = assert(input:match("0x(%x+)"), input)
-            local data_hex = (h:gsub('..', function(cc)
-                return string.char(tonumber(cc, 16))
-            end))
-            self.machine:send_cmio_response(cartesi.machine.HTIF_YIELD_REASON_ADVANCE_STATE, data_hex);
-        end
+    self.cycle = cycle
 
-        next_input_index = next_input_index + 1
-        next_input_cycle = next_input_index << consts.log2_emulator_span
-    end
-
-    if cycle > self.cycle then
-        machine_state_without_input = self:run(cycle)
-        self:take_snapshot(snapshot_dir, cycle, true)
-    end
-
-    return machine_state_without_input
+    return self:state()
 end
 
 function Machine:increment_uarch()
@@ -240,13 +271,6 @@ end
 
 local keccak = require "cartesi".keccak
 
-local function hex_from_bin(bin)
-    assert(bin:len() == 32)
-    return "0x" .. (bin:gsub('.', function(c)
-        return string.format('%02x', string.byte(c))
-    end))
-end
-
 local function ver(t, p, s)
     local stride = p >> 3
     for k, v in ipairs(s) do
@@ -260,9 +284,7 @@ local function ver(t, p, s)
     return t
 end
 
-local bint = require 'utils.bint' (256) -- use 256 bits integers
-
-local function encode_access_logs(logs, encode_input)
+local function encode_access_logs(logs)
     local encoded = {}
 
     for _, log in ipairs(logs) do
@@ -280,80 +302,103 @@ local function encode_access_logs(logs, encode_input)
     end
 
     local data = table.concat(encoded)
-    local hex_data = "0x" .. (data:gsub('.', function(c)
-        return string.format('%02x', string.byte(c))
-    end))
-
-    local res
-    if encode_input then
-        assert(#encode_input >= 2)
-        res = "0x" .. to256BitHex((#encode_input - 2) / 2)
-        if #encode_input > 2 then
-            res = res .. string.sub(encode_input, 3, #encode_input)
-        end
-        res = res .. string.sub(hex_data, 3, #hex_data)
-    else
-        res = hex_data
-    end
-    return '"' .. res .. '"'
+    return data
 end
 
-function Machine.get_logs(path, snapshot_dir, cycle, ucycle, inputs)
+local uint256 = require "utils.bint" (256)
+
+local function get_logs_compute(path, agree_hash, meta_cycle, snapshot_dir)
+    local big_step_mask = consts.uarch_span_to_barch
+
+    local base_cycle = (meta_cycle >> consts.log2_uarch_span_to_barch):tointeger()
+    local ucycle = (meta_cycle & big_step_mask):tointeger()
+
     local machine = Machine:new_from_path(path)
-    machine:load_snapshot(snapshot_dir, cycle)
-    local logs = {}
-    local log_type = { annotations = true, proofs = true }
-    local encode_input = nil
-    if inputs then
-        -- treat it as rollups
-        -- the cycle may be the cycle to receive input,
-        -- we need to include the process of feeding input to the machine in the log
-        if cycle == 0 then
-            machine:run(cycle)
-        else
-            machine:run_with_inputs(cycle - 1, inputs, snapshot_dir)
-            machine:run(cycle)
-        end
-
-        local mask = arithmetic.max_uint(consts.log2_emulator_span);
-        -- lua is one based
-        local input = inputs[(cycle >> consts.log2_emulator_span) + 1]
-        if cycle & mask == 0 then
-            if input then
-                local h = assert(input:match("0x(%x+)"), input)
-                local data_hex = (h:gsub('..', function(cc)
-                    return string.char(tonumber(cc, 16))
-                end))
-                -- need to process input
-                if ucycle == 0 then
-                    -- need to log cmio
-                    table.insert(logs,
-                        machine.machine:log_send_cmio_response(cartesi.machine.HTIF_YIELD_REASON_ADVANCE_STATE, data_hex,
-                            log_type
-                        ))
-                    table.insert(logs, machine.machine:log_uarch_step(log_type))
-                    return encode_access_logs(logs, input)
-                else
-                    machine.machine:send_cmio_response(cartesi.machine.HTIF_YIELD_REASON_ADVANCE_STATE, input)
-                end
-            else
-                if ucycle == 0 then
-                    encode_input = "0x"
-                end
-            end
-        end
-    else
-        -- treat it as compute
-        machine:run(cycle)
-    end
-
+    machine:load_snapshot(snapshot_dir, base_cycle)
+    machine:run(base_cycle)
     machine:run_uarch(ucycle)
-    if ucycle == consts.uarch_span then
-        table.insert(logs, machine.machine:log_uarch_reset(log_type))
+    assert(machine:state().root_hash == agree_hash)
+
+    local logs = {}
+    if ((meta_cycle + 1) & big_step_mask):iszero() then
+        table.insert(logs, machine.machine:log_step_uarch())
+        table.insert(logs, machine.machine:log_reset_uarch())
     else
-        table.insert(logs, machine.machine:log_uarch_step(log_type))
+        table.insert(logs, machine.machine:log_step_uarch())
     end
-    return encode_access_logs(logs, encode_input)
+
+
+    return encode_access_logs(logs), machine:state().root_hash
+end
+
+local function encode_da(input_bin)
+    local input_size_be = string.pack(">I8", input_bin:len())
+    local da_proof = input_size_be .. input_bin
+    return da_proof
+end
+
+local function get_logs_rollups(path, agree_hash, meta_cycle, inputs)
+    local input_mask = (uint256.one() << consts.log2_uarch_span_to_input) - 1
+    local big_step_mask = arithmetic.max_uint(consts.log2_uarch_span_to_barch)
+
+    assert(((meta_cycle >> consts.log2_uarch_span_to_input) & (~input_mask)):iszero())
+    local input_count = (meta_cycle >> consts.log2_uarch_span_to_input):tointeger()
+
+    local logs = {}
+
+    local machine = Machine:new_rollup_advanced_until(path, meta_cycle, inputs)
+    assert(machine:state().root_hash == agree_hash)
+
+    if (meta_cycle & input_mask):iszero() then
+        local input = inputs[input_count + 1]
+        local da_proof
+        if input then
+            local input_bin = conversion.bin_from_hex_n(input)
+            local cmio_log = machine.machine:log_send_cmio_response(
+                cartesi.CMIO_YIELD_REASON_ADVANCE_STATE,
+                input_bin
+            )
+
+            table.insert(logs, cmio_log)
+
+            da_proof = encode_da(input_bin)
+        else
+            da_proof = encode_da("")
+        end
+
+        local uarch_step_log = machine.machine:log_step_uarch()
+        table.insert(logs, uarch_step_log)
+
+        local step_proof = encode_access_logs(logs)
+        local proof = da_proof .. step_proof
+        return proof, machine:state().root_hash
+    else
+        if ((meta_cycle + 1) & big_step_mask):iszero() then
+            assert(machine:is_uarch_halted())
+
+            local uarch_step_log = machine.machine:log_step_uarch()
+            table.insert(logs, uarch_step_log)
+            local ureset_log = machine.machine:log_reset_uarch()
+            table.insert(logs, ureset_log)
+
+            return encode_access_logs(logs), machine:state().root_hash
+        else
+            local uarch_step_log = machine.machine:log_step_uarch()
+            table.insert(logs, uarch_step_log)
+            return encode_access_logs(logs), machine:state().root_hash
+        end
+    end
+end
+
+function Machine.get_logs(path, agree_hash, meta_cycle, inputs, snapshot_dir)
+    local proofs, next_hash
+    if inputs then
+        proofs, next_hash = get_logs_rollups(path, agree_hash, meta_cycle, inputs)
+    else
+        proofs, next_hash = get_logs_compute(path, agree_hash, meta_cycle, snapshot_dir)
+    end
+
+    return string.format('"%s"', conversion.hex_from_bin_n(proofs)), next_hash
 end
 
 return Machine

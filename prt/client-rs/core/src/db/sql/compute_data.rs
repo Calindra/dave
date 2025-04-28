@@ -4,7 +4,7 @@
 use super::error::*;
 use crate::db::compute_state_access::{Input, Leaf};
 
-use rusqlite::{params, OptionalExtension};
+use rusqlite::{OptionalExtension, params};
 
 //
 // Inputs
@@ -16,7 +16,11 @@ pub fn insert_inputs<'a>(
 ) -> Result<()> {
     let mut stmt = insert_input_statement(&conn)?;
     for (i, input) in inputs.enumerate() {
-        stmt.execute(params![i, input.0])?;
+        if stmt.execute(params![i, input.0])? != 1 {
+            return Err(ComputeStateAccessError::InsertionFailed {
+                description: "input insertion failed".to_owned(),
+            });
+        }
     }
 
     Ok(())
@@ -75,8 +79,12 @@ pub fn insert_compute_leafs<'a>(
 ) -> Result<()> {
     let mut stmt = insert_compute_leaf_statement(&conn)?;
     for (i, leaf) in leafs.enumerate() {
-        assert!(leaf.1 > 0);
-        stmt.execute(params![level, base_cycle, i, leaf.0, leaf.1])?;
+        assert!(leaf.repetitions > 0);
+        if stmt.execute(params![level, base_cycle, i, leaf.hash, leaf.repetitions])? != 1 {
+            return Err(ComputeStateAccessError::InsertionFailed {
+                description: "compute leafs insertion failed".to_owned(),
+            });
+        }
     }
 
     Ok(())
@@ -129,8 +137,12 @@ pub fn insert_compute_tree<'a>(
     if compute_tree_count(conn, tree_root)? == 0 {
         let mut stmt = insert_compute_tree_statement(&conn)?;
         for (i, leaf) in tree_leafs.enumerate() {
-            assert!(leaf.1 > 0);
-            stmt.execute(params![tree_root, i, leaf.0, leaf.1])?;
+            assert!(leaf.repetitions > 0);
+            if stmt.execute(params![tree_root, i, leaf.hash, leaf.repetitions])? != 1 {
+                return Err(ComputeStateAccessError::InsertionFailed {
+                    description: "compute tree insertion failed".to_owned(),
+                });
+            }
         }
     }
 
@@ -193,7 +205,11 @@ fn insert_handle_rollups_statement(conn: &rusqlite::Connection) -> Result<rusqli
 
 pub fn insert_handle_rollups(conn: &rusqlite::Connection, handle_rollups: bool) -> Result<()> {
     let mut stmt = insert_handle_rollups_statement(&conn)?;
-    stmt.execute(params![handle_rollups])?;
+    if stmt.execute(params![handle_rollups])? != 1 {
+        return Err(ComputeStateAccessError::InsertionFailed {
+            description: "rollups operation mode insertion failed".to_owned(),
+        });
+    }
 
     Ok(())
 }
@@ -290,7 +306,22 @@ mod leafs_tests {
         ];
 
         assert!(matches!(
-            insert_compute_leafs(&conn, 0, 0, [Leaf(data, 1), Leaf(data, 2)].iter(),),
+            insert_compute_leafs(
+                &conn,
+                0,
+                0,
+                [
+                    Leaf {
+                        hash: data,
+                        repetitions: 1
+                    },
+                    Leaf {
+                        hash: data,
+                        repetitions: 2
+                    },
+                ]
+                .iter(),
+            ),
             Ok(())
         ));
         assert!(matches!(compute_leafs(&conn, 0, 0).unwrap().len(), 2));
@@ -300,7 +331,17 @@ mod leafs_tests {
                 &conn,
                 0,
                 0,
-                [Leaf(data.clone(), 1), Leaf(data.clone(), 2)].iter(),
+                [
+                    Leaf {
+                        hash: data,
+                        repetitions: 1
+                    },
+                    Leaf {
+                        hash: data,
+                        repetitions: 2
+                    },
+                ]
+                .iter(),
             ),
             Err(_)
         ));
@@ -309,7 +350,17 @@ mod leafs_tests {
                 &conn,
                 0,
                 1,
-                [Leaf(data.clone(), 1), Leaf(data.clone(), 2)].iter(),
+                [
+                    Leaf {
+                        hash: data,
+                        repetitions: 1
+                    },
+                    Leaf {
+                        hash: data,
+                        repetitions: 2
+                    },
+                ]
+                .iter(),
             ),
             Ok(())
         ));
@@ -319,7 +370,17 @@ mod leafs_tests {
                 &conn,
                 1,
                 0,
-                [Leaf(data.clone(), 1), Leaf(data.clone(), 2)].iter(),
+                [
+                    Leaf {
+                        hash: data,
+                        repetitions: 1
+                    },
+                    Leaf {
+                        hash: data,
+                        repetitions: 2
+                    },
+                ]
+                .iter(),
             ),
             Ok(())
         ));
@@ -348,7 +409,21 @@ mod trees_tests {
         ];
 
         assert!(matches!(
-            insert_compute_tree(&conn, &root, [Leaf(data, 1), Leaf(data, 2)].iter(),),
+            insert_compute_tree(
+                &conn,
+                &root,
+                [
+                    Leaf {
+                        hash: data,
+                        repetitions: 1
+                    },
+                    Leaf {
+                        hash: data,
+                        repetitions: 2
+                    },
+                ]
+                .iter(),
+            ),
             Ok(())
         ));
         assert!(matches!(compute_tree(&conn, &root).unwrap().len(), 2));
@@ -358,7 +433,21 @@ mod trees_tests {
             insert_compute_tree(
                 &conn,
                 &root,
-                [Leaf(data, 1), Leaf(data, 2), Leaf(data, 3)].iter(),
+                [
+                    Leaf {
+                        hash: data,
+                        repetitions: 1
+                    },
+                    Leaf {
+                        hash: data,
+                        repetitions: 2
+                    },
+                    Leaf {
+                        hash: data,
+                        repetitions: 3
+                    }
+                ]
+                .iter(),
             ),
             Ok(())
         ));

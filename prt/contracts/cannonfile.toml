@@ -1,0 +1,54 @@
+name = 'cartesi-prt-multilevel'
+version = '0.0.1'
+description = 'Cartesi PRT contracts'
+
+[deploy.RiscVStateTransition]
+artifact = "RiscVStateTransition"
+create2 = true
+salt = "<%= zeroHash %>"
+
+[deploy.CmioStateTransition]
+artifact = "CmioStateTransition"
+create2 = true
+salt = "<%= zeroHash %>"
+
+[deploy.CartesiStateTransition]
+artifact = "CartesiStateTransition"
+args = [
+    "<%= contracts.RiscVStateTransition.address %>",
+    "<%= contracts.CmioStateTransition.address %>",
+]
+create2 = true
+salt = "<%= zeroHash %>"
+
+[deploy.TopTournamentFactory]
+artifact = "TopTournamentFactory"
+create2 = true
+salt = "<%= zeroHash %>"
+
+[deploy.MiddleTournamentFactory]
+artifact = "MiddleTournamentFactory"
+create2 = true
+salt = "<%= zeroHash %>"
+
+[deploy.BottomTournamentFactory]
+artifact = "BottomTournamentFactory"
+create2 = true
+salt = "<%= zeroHash %>"
+
+[deploy.CanonicalTournamentParametersProvider]
+artifact = "CanonicalTournamentParametersProvider"
+create2 = true
+salt = "<%= zeroHash %>"
+
+[deploy.MultiLevelTournamentFactory]
+artifact = "MultiLevelTournamentFactory"
+args = [
+    "<%= contracts.TopTournamentFactory.address %>",
+    "<%= contracts.MiddleTournamentFactory.address %>",
+    "<%= contracts.BottomTournamentFactory.address %>",
+    "<%= contracts.CanonicalTournamentParametersProvider.address %>",
+    "<%= contracts.CartesiStateTransition.address %>",
+]
+create2 = true
+salt = "<%= zeroHash %>"

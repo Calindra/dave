@@ -5,8 +5,9 @@ pragma solidity ^0.8.17;
 
 import {Script} from "forge-std/Script.sol";
 
-import "rollups-contracts/inputs/InputBox.sol";
+import "cartesi-rollups-contracts-2.0.0/inputs/InputBox.sol";
 
+// Only used for tests
 contract InputBoxScript is Script {
     function run() external {
         vm.startBroadcast(vm.envUint("PRIVATE_KEY"));

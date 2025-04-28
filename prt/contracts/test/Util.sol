@@ -12,9 +12,10 @@
 
 import "forge-std/console.sol";
 
+import "src/arbitration-config/CanonicalConstants.sol";
+import "src/arbitration-config/CanonicalTournamentParametersProvider.sol";
+
 import "src/tournament/libs/Match.sol";
-import "src/CanonicalConstants.sol";
-import "src/CanonicalTournamentParametersProvider.sol";
 import "src/tournament/concretes/TopTournament.sol";
 import "src/tournament/concretes/MiddleTournament.sol";
 
@@ -24,9 +25,9 @@ import "src/tournament/factories/multilevel/TopTournamentFactory.sol";
 import "src/tournament/factories/multilevel/MiddleTournamentFactory.sol";
 import "src/tournament/factories/multilevel/BottomTournamentFactory.sol";
 
-import "src/CmioStateTransition.sol";
-import "src/RiscVStateTransition.sol";
-import "src/StateTransition.sol";
+import "src/state-transition/CmioStateTransition.sol";
+import "src/state-transition/RiscVStateTransition.sol";
+import "src/state-transition/CartesiStateTransition.sol";
 
 pragma solidity ^0.8.0;
 
@@ -195,7 +196,6 @@ contract Util {
         (,,, uint64 height) = _tournament.tournamentLevelConstants();
         Tree.Node _left = _player == 1 ? playerNodes[1][0] : playerNodes[0][0];
         Tree.Node _right = playerNodes[_player][0];
-        // Machine.Hash state = _player == 1 ? ONE_STATE : Machine.ZERO_STATE;
 
         _tournament.sealLeafMatch(
             _matchId,
@@ -211,47 +211,13 @@ contract Util {
         Match.Id memory _matchId,
         uint256 _player
     ) internal {
-        Tree.Node _left = _player == 1 ? playerNodes[1][0] : playerNodes[0][0];
-        Tree.Node _right = playerNodes[_player][0];
-        // Machine.Hash state = _player == 1 ? ONE_STATE : Machine.ZERO_STATE;
+        (,,, uint64 height) = _tournament.tournamentLevelConstants();
+        Tree.Node _left = _player == 1
+            ? playerNodes[1][height - 1]
+            : playerNodes[0][height - 1];
+        Tree.Node _right = playerNodes[_player][height - 1];
 
         _tournament.winLeafMatch(_matchId, _left, _right, new bytes(0));
-    }
-
-    function winLeafMatchRollupsWithInput(
-        LeafTournament _tournament,
-        Match.Id memory _matchId,
-        uint256 _player
-    ) internal {
-        Tree.Node _left = _player == 1 ? playerNodes[1][0] : playerNodes[0][0];
-        Tree.Node _right = playerNodes[_player][0];
-        // Machine.Hash state = _player == 1 ? ONE_STATE : Machine.ZERO_STATE;
-
-        uint256 length = 20;
-        _tournament.winLeafMatch(
-            _matchId,
-            _left,
-            _right,
-            abi.encodePacked(abi.encodePacked(length), new bytes(20))
-        );
-    }
-
-    function winLeafMatchRollupsWithoutInput(
-        LeafTournament _tournament,
-        Match.Id memory _matchId,
-        uint256 _player
-    ) internal {
-        Tree.Node _left = _player == 1 ? playerNodes[1][0] : playerNodes[0][0];
-        Tree.Node _right = playerNodes[_player][0];
-        // Machine.Hash state = _player == 1 ? ONE_STATE : Machine.ZERO_STATE;
-
-        uint256 length = 0;
-        _tournament.winLeafMatch(
-            _matchId,
-            _left,
-            _right,
-            abi.encodePacked(abi.encodePacked(length), new bytes(0))
-        );
     }
 
     function sealInnerMatchAndCreateInnerTournament(
@@ -294,7 +260,7 @@ contract Util {
             ArbitrationConstants.MAX_ALLOWANCE,
             ArbitrationConstants.log2step(0),
             ArbitrationConstants.height(0),
-            new StateTransition(
+            new CartesiStateTransition(
                 new RiscVStateTransition(), new CmioStateTransition()
             )
         );
@@ -305,16 +271,37 @@ contract Util {
     // instantiates all sub-factories and TournamentFactory
     function instantiateTournamentFactory()
         internal
-        returns (MultiLevelTournamentFactory)
+        returns (MultiLevelTournamentFactory, CartesiStateTransition)
     {
-        return new MultiLevelTournamentFactory(
-            new TopTournamentFactory(),
-            new MiddleTournamentFactory(),
-            new BottomTournamentFactory(),
-            new CanonicalTournamentParametersProvider(),
-            new StateTransition(
-                new RiscVStateTransition(), new CmioStateTransition()
-            )
+        (CartesiStateTransition stateTransition,,) =
+            instantiateStateTransition();
+        return (
+            new MultiLevelTournamentFactory(
+                new TopTournamentFactory(),
+                new MiddleTournamentFactory(),
+                new BottomTournamentFactory(),
+                new CanonicalTournamentParametersProvider(),
+                stateTransition
+            ),
+            stateTransition
         );
+    }
+
+    // instantiates StateTransition
+    function instantiateStateTransition()
+        internal
+        returns (
+            CartesiStateTransition,
+            RiscVStateTransition,
+            CmioStateTransition
+        )
+    {
+        RiscVStateTransition riscVStateTransition = new RiscVStateTransition();
+        CmioStateTransition cmioStateTransition = new CmioStateTransition();
+        CartesiStateTransition stateTransition = new CartesiStateTransition(
+            riscVStateTransition, cmioStateTransition
+        );
+
+        return (stateTransition, riscVStateTransition, cmioStateTransition);
     }
 }

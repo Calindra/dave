@@ -13,8 +13,8 @@
 import "forge-std/Test.sol";
 
 import "./Util.sol";
-import "src/tournament/factories/MultiLevelTournamentFactory.sol";
-import "src/CanonicalConstants.sol";
+import "prt-contracts/tournament/factories/MultiLevelTournamentFactory.sol";
+import "prt-contracts/arbitration-config/CanonicalConstants.sol";
 
 pragma solidity ^0.8.0;
 
@@ -32,7 +32,7 @@ contract MiddleTournamentTest is Util, Test {
     event newInnerTournament(Match.IdHash indexed, NonRootTournament);
 
     constructor() {
-        factory = Util.instantiateTournamentFactory();
+        (factory,) = Util.instantiateTournamentFactory();
     }
 
     function setUp() public {}

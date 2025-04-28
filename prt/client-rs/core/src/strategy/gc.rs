@@ -1,9 +1,9 @@
-use ::log::info;
+use ::log::debug;
 use alloy::primitives::Address;
-use anyhow::Result;
 use async_recursion::async_recursion;
 
-use crate::arena::{ArenaSender, MatchState, TournamentStateMap};
+use crate::strategy::error::Result;
+use crate::tournament::{ArenaSender, MatchState, TournamentStateMap};
 
 pub struct GarbageCollector {
     root_tournamet: Address,
@@ -51,7 +51,7 @@ impl GarbageCollector {
                 || (!status_2.clock.has_time()
                     && (status_2.clock.time_since_timeout() > status_1.clock.allowance))
             {
-                info!(
+                debug!(
                     "eliminate match for commitment {} and {} at tournament {} of level {}",
                     m.id.commitment_one,
                     m.id.commitment_two,
@@ -59,16 +59,9 @@ impl GarbageCollector {
                     tournament_state.level
                 );
 
-                let elim = arena_sender.eliminate_match(tournament_address, m.id).await;
-                if elim.is_err() {
-                    info!(
-                    "failed to eliminate match for commitment {} and {} at tournament {} of level {}",
-                    m.id.commitment_one,
-                    m.id.commitment_two,
-                    tournament_address,
-                    tournament_state.level
-                );
-                }
+                arena_sender
+                    .eliminate_match(tournament_address, m.id)
+                    .await?;
             }
         }
         Ok(())
@@ -82,16 +75,14 @@ impl GarbageCollector {
         tournament_states: &TournamentStateMap,
         tournament_address: Address,
     ) -> Result<()> {
-        info!(
+        debug!(
             "Garbage collect match at HEIGHT: {}, of tournament: {}",
             match_state.current_height, tournament_address
         );
         if let Some(inner_tournament) = match_state.inner_tournament {
-            return self
-                .react_tournament(arena_sender, inner_tournament, tournament_states)
-                .await;
+            self.react_tournament(arena_sender, inner_tournament, tournament_states)
+                .await?;
         }
-
         Ok(())
     }
 }

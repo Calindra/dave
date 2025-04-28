@@ -1,0 +1,20 @@
+name = 'cartesi-dave-consensus-factory'
+version = '0.0.1'
+description = 'Cartesi Dave Consensus Factory'
+
+[pull.prtContracts]
+source = "cartesi-prt-multilevel:0.0.1@main"
+
+[pull.cartesiRollups]
+source = "cartesi-rollups:2.0.0-rc.17@main"
+
+[deploy.DaveConsensusFactory]
+artifact = "DaveConsensusFactory"
+args = [
+  "<%= cartesiRollups.InputBox.address %>",
+  "<%= prtContracts.MultiLevelTournamentFactory.address %>",
+]
+create2 = true
+salt = "<%= zeroHash %>"
+
+
