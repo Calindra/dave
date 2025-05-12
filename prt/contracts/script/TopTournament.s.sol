@@ -3,7 +3,7 @@
 
 pragma solidity ^0.8.17;
 
-import {Script} from "forge-std/Script.sol";
+import {Script} from "forge-std-1.9.6/src/Script.sol";
 
 import {Machine} from "src/types/Machine.sol";
 
@@ -20,9 +20,9 @@ contract TopTournamentScript is Script {
         vm.startBroadcast(vm.envUint("PRIVATE_KEY"));
 
         MultiLevelTournamentFactory factory = new MultiLevelTournamentFactory(
-            new TopTournamentFactory(),
-            new MiddleTournamentFactory(),
-            new BottomTournamentFactory(),
+            new TopTournamentFactory(new TopTournament()),
+            new MiddleTournamentFactory(new MiddleTournament()),
+            new BottomTournamentFactory(new BottomTournament()),
             new CanonicalTournamentParametersProvider(),
             new CartesiStateTransition(
                 new RiscVStateTransition(), new CmioStateTransition()

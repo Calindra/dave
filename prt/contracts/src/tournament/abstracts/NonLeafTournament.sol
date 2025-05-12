@@ -19,11 +19,6 @@ abstract contract NonLeafTournament is Tournament {
     using Match for Match.IdHash;
 
     //
-    // Constants
-    //
-    IMultiLevelTournamentFactory immutable tournamentFactory;
-
-    //
     // Storage
     //
     mapping(NonRootTournament => Match.IdHash) matchIdFromInnerTournaments;
@@ -32,13 +27,6 @@ abstract contract NonLeafTournament is Tournament {
     // Events
     //
     event newInnerTournament(Match.IdHash indexed, NonRootTournament);
-
-    //
-    // Constructor
-    //
-    constructor(IMultiLevelTournamentFactory _tournamentFactory) {
-        tournamentFactory = _tournamentFactory;
-    }
 
     function sealInnerMatchAndCreateInnerTournament(
         Match.Id calldata _matchId,
@@ -58,10 +46,11 @@ abstract contract NonLeafTournament is Tournament {
             _clock2.setPaused();
             _maxDuration = Clock.max(_clock1, _clock2);
         }
+        TournamentArgs memory args = _tournamentArgs();
         (Machine.Hash _finalStateOne, Machine.Hash _finalStateTwo) = _matchState
             .sealMatch(
             _matchId,
-            initialHash,
+            args.initialHash,
             _leftLeaf,
             _rightLeaf,
             _agreeHash,
@@ -74,8 +63,8 @@ abstract contract NonLeafTournament is Tournament {
             _matchId.commitmentTwo,
             _finalStateTwo,
             _maxDuration,
-            _matchState.toCycle(startCycle),
-            level + 1
+            _matchState.toCycle(args.startCycle),
+            args.level + 1
         );
         matchIdFromInnerTournaments[_inner] = _matchId.hashFromId();
 
@@ -134,8 +123,10 @@ abstract contract NonLeafTournament is Tournament {
     ) private returns (NonRootTournament) {
         // the inner tournament is bottom tournament at last level
         // else instantiate middle tournament
+        TournamentArgs memory args = _tournamentArgs();
         Tournament _tournament;
-        if (_level == levels - 1) {
+        IMultiLevelTournamentFactory tournamentFactory = _tournamentFactory();
+        if (_level == args.levels - 1) {
             _tournament = tournamentFactory.instantiateBottom(
                 _initialHash,
                 _contestedCommitmentOne,
@@ -145,7 +136,7 @@ abstract contract NonLeafTournament is Tournament {
                 _allowance,
                 _startCycle,
                 _level,
-                provider
+                args.provider
             );
         } else {
             _tournament = tournamentFactory.instantiateMiddle(
@@ -157,10 +148,16 @@ abstract contract NonLeafTournament is Tournament {
                 _allowance,
                 _startCycle,
                 _level,
-                provider
+                args.provider
             );
         }
 
         return NonRootTournament(address(_tournament));
     }
+
+    function _tournamentFactory()
+        internal
+        view
+        virtual
+        returns (IMultiLevelTournamentFactory);
 }

@@ -5,13 +5,13 @@ mod find_contract_creation;
 
 use crate::error::{ProviderErrors, Result};
 
-use alloy::rpc::types::{Log, Topic};
 use alloy::{
     contract::{Error, Event},
     eips::BlockNumberOrTag::Finalized,
-    hex::ToHexExt,
+    hex::{FromHex, ToHexExt},
     primitives::{Address, U256},
     providers::{DynProvider, Provider},
+    rpc::types::{Log, Topic},
     sol_types::SolEvent,
 };
 use async_recursion::async_recursion;
@@ -21,18 +21,20 @@ use find_contract_creation::find_contract_creation_block;
 use log::{info, trace};
 use num_traits::cast::ToPrimitive;
 use std::{
+    fmt,
     iter::Peekable,
     marker::{Send, Sync},
     sync::Arc,
     time::Duration,
 };
 
-use cartesi_dave_contracts::daveconsensus::DaveConsensus::EpochSealed;
-use cartesi_rollups_contracts::inputbox::InputBox::InputAdded;
+use cartesi_dave_contracts::daveconsensus::DaveConsensus::{self, EpochSealed};
+use cartesi_dave_merkle::Digest;
+use cartesi_rollups_contracts::{application::Application, inputbox::InputBox::InputAdded};
 use rollups_state_manager::{Epoch, Input, InputId, StateManager};
 
-const DEVNET_CONSENSUS_ADDRESS: &str = "0x0165878A594ca255338adfa4d48449f69242Eb8F";
-const DEVNET_INPUT_BOX_ADDRESS: &str = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
+const DEVNET_INPUT_BOX_ADDRESS: &str = "5FbDB2315678afecb367f032d93F642f64180aa3";
+const DEVNET_CONSENSUS_ADDRESS: &str = "610178da211fef7d417bc0e6fed39f05609ad788";
 
 #[derive(Debug, Clone, Parser)]
 #[command(name = "cartesi_rollups_config")]
@@ -42,11 +44,64 @@ pub struct AddressBook {
     #[arg(long, env, default_value_t = Address::ZERO)]
     app: Address,
     /// address of Dave consensus
-    #[arg(long, env, default_value = DEVNET_CONSENSUS_ADDRESS)]
+    #[clap(skip)]
     pub consensus: Address,
     /// address of input box
-    #[arg(long, env, default_value = DEVNET_INPUT_BOX_ADDRESS)]
+    #[clap(skip)]
     input_box: Address,
+}
+
+impl fmt::Display for AddressBook {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "    App Address: {}", self.app)?;
+        writeln!(f, "    Consensus Address: {}", self.consensus)?;
+        writeln!(f, "    Input Box Address: {}", self.input_box)?;
+        Ok(())
+    }
+}
+
+impl AddressBook {
+    // initialize `AddressBook` and return the machine initial hash of epoch 0
+    pub async fn initialize(&mut self, provider: &DynProvider) -> Digest {
+        let consensus_contract = {
+            if self.app == Address::ZERO {
+                self.consensus = Address::from_hex(DEVNET_CONSENSUS_ADDRESS)
+                    .expect("fail to load consensus address");
+                self.input_box = Address::from_hex(DEVNET_INPUT_BOX_ADDRESS)
+                    .expect("fail to load input box address");
+                DaveConsensus::new(self.consensus, provider)
+            } else {
+                let application = Application::new(self.app, provider);
+                self.consensus = application
+                    .getOutputsMerkleRootValidator()
+                    .call()
+                    .await
+                    .expect("fail to query consensus address")
+                    ._0;
+                let consensus = DaveConsensus::new(self.consensus, provider);
+                self.input_box = consensus
+                    .getInputBox()
+                    .call()
+                    .await
+                    .expect("fail to query input box address")
+                    ._0;
+                consensus
+            }
+        };
+        let consensus_created_block = find_contract_creation_block(provider, self.consensus)
+            .await
+            .expect("fail to get consensus creation block");
+        let sealed_epochs = consensus_contract
+            .EpochSealed_filter()
+            .address(self.consensus)
+            .from_block(consensus_created_block)
+            .to_block(consensus_created_block)
+            .query()
+            .await
+            .expect("fail to get sealed epoch 0");
+        assert!(sealed_epochs.len() == 1);
+        sealed_epochs[0].0.initialMachineStateHash.into()
+    }
 }
 
 pub struct BlockchainReader<SM: StateManager> {

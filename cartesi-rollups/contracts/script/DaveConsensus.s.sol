@@ -3,7 +3,7 @@
 
 pragma solidity ^0.8.17;
 
-import {Script} from "forge-std/Script.sol";
+import {Script} from "forge-std-1.9.6/src/Script.sol";
 
 import {Machine} from "prt-contracts/types/Machine.sol";
 import "prt-contracts/tournament/factories/MultiLevelTournamentFactory.sol";
@@ -22,9 +22,9 @@ contract DaveConsensusScript is Script {
         vm.startBroadcast(vm.envUint("PRIVATE_KEY"));
 
         MultiLevelTournamentFactory factory = new MultiLevelTournamentFactory(
-            new TopTournamentFactory(),
-            new MiddleTournamentFactory(),
-            new BottomTournamentFactory(),
+            new TopTournamentFactory(new TopTournament()),
+            new MiddleTournamentFactory(new MiddleTournament()),
+            new BottomTournamentFactory(new BottomTournament()),
             new TestTournamentParametersProvider(),
             new CartesiStateTransition(new RiscVStateTransition(), new CmioStateTransition())
         );

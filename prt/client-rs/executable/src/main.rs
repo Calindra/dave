@@ -1,20 +1,19 @@
 use alloy::{
-    network::EthereumWallet,
     providers::{DynProvider, Provider, ProviderBuilder},
     rpc::client::RpcClient,
-    signers::local::PrivateKeySigner,
     transports::{http::reqwest::Url, layers::RetryBackoffLayer},
 };
 use cartesi_prt_compute::ComputeConfig;
 use cartesi_prt_core::{
     strategy::player::{Player, PlayerTournamentResult},
-    tournament::{BlockchainConfig, EthArenaSender},
+    tournament::{BlockchainConfig, EthArenaSender, get_wallet_from_private},
 };
 
 use anyhow::Result;
 use clap::Parser;
+use env_logger::Env;
 use log::{error, info};
-use std::{fs::OpenOptions, io, path::Path, str::FromStr};
+use std::{env, fs::OpenOptions, io, path::Path};
 
 // A simple implementation of `% touch path` (ignores existing files)
 fn touch(path: &Path) -> io::Result<()> {
@@ -35,10 +34,7 @@ fn create_provider(config: &BlockchainConfig) -> DynProvider {
 
     let client = RpcClient::builder().layer(retry).http(endpoint_url);
 
-    let signer = PrivateKeySigner::from_str(config.web3_private_key.as_str())
-        .expect("could not create private key signer");
-
-    let wallet = EthereumWallet::from(signer);
+    let wallet = get_wallet_from_private(&config.web3_private_key.as_deref().unwrap());
 
     let provider = ProviderBuilder::new()
         .wallet(wallet)
@@ -55,13 +51,13 @@ fn create_provider(config: &BlockchainConfig) -> DynProvider {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    env_logger::init();
+    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 
     info!("Hello from Dave!");
 
-    let config = ComputeConfig::parse();
-    let blockchain_config = config.blockchain_config;
-    let provider = create_provider(&blockchain_config);
+    let mut config = ComputeConfig::parse();
+    config.blockchain_config.initialize();
+    let provider = create_provider(&config.blockchain_config);
     let sender = EthArenaSender::new(provider.clone())?;
 
     let mut player = Player::new(
@@ -75,11 +71,7 @@ async fn main() -> Result<()> {
     )
     .expect("fail to create player object");
 
-    let finished = tempfile::tempdir()
-        .expect("Failed to create temp directory")
-        .path()
-        .parent()
-        .expect("No temp directory to create finished notification")
+    let finished = env::temp_dir()
         .join(config.root_tournament.to_string().to_uppercase())
         .join("finished");
 

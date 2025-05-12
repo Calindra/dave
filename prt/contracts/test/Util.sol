@@ -10,7 +10,7 @@
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
 // specific language governing permissions and limitations under the License.
 
-import "forge-std/console.sol";
+import "forge-std-1.9.6/src/console.sol";
 
 import "src/arbitration-config/CanonicalConstants.sol";
 import "src/arbitration-config/CanonicalTournamentParametersProvider.sol";
@@ -255,14 +255,15 @@ contract Util {
         internal
         returns (SingleLevelTournamentFactory)
     {
+        (CartesiStateTransition stateTransition,,) =
+            instantiateStateTransition();
         SingleLevelTournamentFactory singleLevelFactory = new SingleLevelTournamentFactory(
-            ArbitrationConstants.MATCH_EFFORT,
-            ArbitrationConstants.MAX_ALLOWANCE,
+            new SingleLevelTournament(),
+            stateTransition,
             ArbitrationConstants.log2step(0),
             ArbitrationConstants.height(0),
-            new CartesiStateTransition(
-                new RiscVStateTransition(), new CmioStateTransition()
-            )
+            ArbitrationConstants.MAX_ALLOWANCE,
+            ArbitrationConstants.MATCH_EFFORT
         );
 
         return singleLevelFactory;
@@ -277,9 +278,9 @@ contract Util {
             instantiateStateTransition();
         return (
             new MultiLevelTournamentFactory(
-                new TopTournamentFactory(),
-                new MiddleTournamentFactory(),
-                new BottomTournamentFactory(),
+                new TopTournamentFactory(new TopTournament()),
+                new MiddleTournamentFactory(new MiddleTournament()),
+                new BottomTournamentFactory(new BottomTournament()),
                 new CanonicalTournamentParametersProvider(),
                 stateTransition
             ),
