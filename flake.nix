@@ -58,12 +58,13 @@
           };
         machineEmulator =
           let
-            machineEmulatorVersion = "0.19.0-alpha4";
+            machineEmulatorVersion = "0.19.0-alpha3";
+            machineEmulatorSmallVersion = "0.19.0";
             machineHash =
               if pkgs.stdenv.hostPlatform.system == "x86_64-linux" then
-                "sha256-wYwHi8QuX9uxNmkS0N2ZFz3pZSJYBYlHjZbb0PiqSL8="
+                "sha256-cmxRBjLu2tUa7DZmNHEfUGKAjFrt80t/t+ayJj3ojh8="
               else if pkgs.stdenv.hostPlatform.system == "aarch64-linux" then
-                "sha256-vBnSl9SMS4aENIb4sKmY1G8FNzoRuPqWrY8An7du29I="
+                "sha256-RXEilN3ZzvATAHQGa4ANOwkKXlduySFeGhbz3csUbSk="
               else
                 throw "Unsupported system: ${pkgs.stdenv.hostPlatform.system}";
           in
@@ -71,7 +72,7 @@
             pname = "machine-emulator";
             version = machineEmulatorVersion;
             src = pkgs.fetchurl {
-              url = "https://github.com/cartesi/machine-emulator/releases/download/v${machineEmulatorVersion}/machine-emulator_${debArch}.deb";
+              url = "https://github.com/cartesi/machine-emulator/releases/download/v${machineEmulatorVersion}/cartesi-machine-v${machineEmulatorSmallVersion}_${debArch}.deb";
               sha256 = machineHash;
             };
             unpackPhase = "true";
