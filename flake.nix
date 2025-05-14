@@ -15,6 +15,26 @@
           config.allowUnfree = true;
         };
         foundry-bin = foundry.defaultPackage.${system};
+        # Helper to map nix system to debian arch
+        debArch = if pkgs.stdenv.hostPlatform.system == "x86_64-linux" then "amd64"
+                  else if pkgs.stdenv.hostPlatform.system == "aarch64-linux" then "arm64"
+                  else throw "Unsupported system: ${pkgs.stdenv.hostPlatform.system}";
+        genext2fsVersion = "1.5.6";
+        genext2fs = pkgs.stdenv.mkDerivation {
+          pname = "genext2fs";
+          version = genext2fsVersion;
+          src = pkgs.fetchurl {
+            url = "https://github.com/cartesi/genext2fs/releases/download/v${genext2fsVersion}/xgenext2fs_${debArch}.deb";
+            sha256 = "sha256-mW5OaKY4tdxZZ9NBD5LsuNL0HjIhi74Pi0xEdNfuvFk=";
+          };
+          unpackPhase = "true";
+          installPhase = ''
+            dpkg-deb -x $src $out
+            mkdir -p $out/bin/
+            ln -s $out/usr/bin/xgenext2fs $out/bin/xgenext2fs
+          '';
+          nativeBuildInputs = [ pkgs.dpkg ];
+        };
       in {
         devShells.default = pkgs.mkShell {
           buildInputs = with pkgs; [
@@ -46,6 +66,7 @@
             gcc12
             gcc12Stdenv
             # gcc-cross-aarch64
+            genext2fs
           ];
           shellHook = ''
             export SVM_ROOT="$PWD/.svm"
