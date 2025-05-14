@@ -55,6 +55,8 @@
             export PATH="$PWD/.svm/bin:$PATH"
             export PATH="$PWD/.foundry/bin:$PATH"
             export DEBIAN_FRONTEND=noninteractive
+
+            docker run --privileged --rm tonistiigi/binfmt --install riscv64
           '';
         };
       }
