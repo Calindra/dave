@@ -38,6 +38,9 @@
       in {
         devShells.default = pkgs.mkShell {
           buildInputs = with pkgs; [
+            docker
+            docker-buildx
+            docker-compose
             rustc
             cargo
             rustfmt
