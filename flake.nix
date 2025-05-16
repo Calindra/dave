@@ -87,6 +87,9 @@
       {
         formatter = nixpkgs.legacyPackages.x86_64-linux.nixfmt-rfc-style;
         devShells.default = pkgs.mkShell {
+          nativeBuildInputs = with pkgs; [
+            dpkg
+          ];
           buildInputs = with pkgs; [
             docker
             docker-buildx
@@ -132,6 +135,8 @@
             export DEBIAN_FRONTEND=noninteractive
 
             docker run --privileged --rm tonistiigi/binfmt --install riscv64
+            which cartesi-machine
+            cartesi-machine --version
           '';
         };
       }
